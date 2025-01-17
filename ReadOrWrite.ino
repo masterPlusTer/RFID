@@ -77,6 +77,7 @@ void escribirEnTarjeta(int bloque, String mensaje) {
     return;
   }
 
+  // Preparar datos para escribir (máximo 16 bytes)
   byte buffer[16] = {0};
   mensaje.getBytes(buffer, 16);
 
@@ -84,6 +85,27 @@ void escribirEnTarjeta(int bloque, String mensaje) {
   if (status == MFRC522::STATUS_OK) {
     Serial.print("Mensaje escrito en el bloque ");
     Serial.println(bloque);
+
+    // Verificar la escritura leyendo el bloque
+    byte bufferLeido[18];
+    byte bufferSize = sizeof(bufferLeido);
+    status = rfid.MIFARE_Read(bloque, bufferLeido, &bufferSize);
+
+    if (status == MFRC522::STATUS_OK) {
+      Serial.print("Verificación exitosa. Datos en el bloque ");
+      Serial.print(bloque);
+      Serial.print(": ");
+      for (byte i = 0; i < 16; i++) {
+        if (bufferLeido[i] == 0) break;
+        Serial.print((char)bufferLeido[i]);
+      }
+      Serial.println();
+    } else {
+      Serial.print("Error al verificar los datos del bloque ");
+      Serial.print(bloque);
+      Serial.print(": ");
+      Serial.println(rfid.GetStatusCodeName(status));
+    }
   } else {
     Serial.print("Error al escribir en el bloque ");
     Serial.print(bloque);
