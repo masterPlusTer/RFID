@@ -16,7 +16,7 @@ void setup() {
 
   SPI.begin();        // Inicializar comunicación SPI
   rfid.PCD_Init();    // Inicializar el lector RFID
-  Serial.println("Mini RFID-RC522 listo. Use comandos para leer o escribir datos...");
+  Serial.println("Mini RFID-RC522 listo. Use comandos para leer, escribir o restaurar datos...");
 }
 
 void loop() {
@@ -31,13 +31,19 @@ void loop() {
       if (espacio > 0) {
         String resto = comando.substring(espacio + 1);
         int bloque = resto.substring(0, resto.indexOf(' ')).toInt();
-        String mensaje = resto.substring(resto.indexOf(' ') + 1);
-        escribirEnTarjeta(bloque, mensaje);
+        if (bloque >= 0 && bloque < 64 && bloque % 4 != 3) { // Bloques válidos
+          String mensaje = resto.substring(resto.indexOf(' ') + 1);
+          escribirEnTarjeta(bloque, mensaje);
+        } else {
+          Serial.println("Bloque inválido o reservado. No se puede escribir.");
+        }
       } else {
         Serial.println("Error en el comando escribir. Formato: escribir <bloque> <mensaje>");
       }
+    } else if (comando.startsWith("restaurar")) {
+      restaurarTarjeta();
     } else {
-      Serial.println("Comando desconocido. Use 'leer' o 'escribir'.");
+      Serial.println("Comando desconocido. Use 'leer', 'escribir' o 'restaurar'.");
     }
   }
 }
@@ -85,27 +91,6 @@ void escribirEnTarjeta(int bloque, String mensaje) {
   if (status == MFRC522::STATUS_OK) {
     Serial.print("Mensaje escrito en el bloque ");
     Serial.println(bloque);
-
-    // Verificar la escritura leyendo el bloque
-    byte bufferLeido[18];
-    byte bufferSize = sizeof(bufferLeido);
-    status = rfid.MIFARE_Read(bloque, bufferLeido, &bufferSize);
-
-    if (status == MFRC522::STATUS_OK) {
-      Serial.print("Verificación exitosa. Datos en el bloque ");
-      Serial.print(bloque);
-      Serial.print(": ");
-      for (byte i = 0; i < 16; i++) {
-        if (bufferLeido[i] == 0) break;
-        Serial.print((char)bufferLeido[i]);
-      }
-      Serial.println();
-    } else {
-      Serial.print("Error al verificar los datos del bloque ");
-      Serial.print(bloque);
-      Serial.print(": ");
-      Serial.println(rfid.GetStatusCodeName(status));
-    }
   } else {
     Serial.print("Error al escribir en el bloque ");
     Serial.print(bloque);
@@ -113,6 +98,49 @@ void escribirEnTarjeta(int bloque, String mensaje) {
     Serial.println(rfid.GetStatusCodeName(status));
   }
 
+  rfid.PICC_HaltA();
+}
+
+void restaurarTarjeta() {
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) {
+    Serial.println("No se detectó tarjeta. Acerque una tarjeta.");
+    return;
+  }
+
+  Serial.println("Iniciando restauración de la tarjeta...");
+
+  for (byte sector = 0; sector < 16; sector++) { // 16 sectores en MIFARE 1KB
+    for (byte bloque = 0; bloque < 4; bloque++) {
+      byte bloqueActual = sector * 4 + bloque;
+
+      if (bloque == 3) {
+        // Saltar bloques reservados (trailers)
+        continue;
+      }
+
+      if (!autenticarBloque(bloqueActual)) {
+        Serial.print("Error al autenticar el bloque ");
+        Serial.println(bloqueActual);
+        continue;
+      }
+
+      // Restaurar con datos predeterminados (todos ceros)
+      byte buffer[16] = {0};
+      MFRC522::StatusCode status = rfid.MIFARE_Write(bloqueActual, buffer, 16);
+      if (status == MFRC522::STATUS_OK) {
+        Serial.print("Bloque ");
+        Serial.print(bloqueActual);
+        Serial.println(" restaurado.");
+      } else {
+        Serial.print("Error al restaurar el bloque ");
+        Serial.print(bloqueActual);
+        Serial.print(": ");
+        Serial.println(rfid.GetStatusCodeName(status));
+      }
+    }
+  }
+
+  Serial.println("Restauración completada.");
   rfid.PICC_HaltA();
 }
 
