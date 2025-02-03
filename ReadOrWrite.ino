@@ -1,3 +1,7 @@
+// presionar boton reset del arduino antes de iniciar cada lectura, por ahora funciona asi, me sepan disculpar 
+
+
+
 #include <SPI.h>
 #include <MFRC522.h>
 
